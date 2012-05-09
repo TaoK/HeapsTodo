@@ -21,12 +21,14 @@ namespace LibTests
         public void CompletedWithoutDate()
         {
             var testTask = new Task("x 2012-04-04test");
+            Assert.IsTrue(testTask.Completed);
+            Assert.IsNull(testTask.CompletionDate);
         }
 
         [Test]
         public void CompletedComplex()
         {
-            string taskText = "x 2012-04-05 (A) 2012-04-04 @testcontext Test +testProject.broken due:2008-09-03 ```some notes```";
+            string taskText = @"x 2012-04-05 (A) 2012-04-04 @testcontext Test +testProject.broken due:2008-09-03 ```some notes```";
             var testTask = new Task(taskText);
 
             //confirm everything is as expected after parsing
@@ -41,7 +43,7 @@ namespace LibTests
             Assert.AreEqual(new DateTime(2008, 9, 3), testTask.DueDate);
 
             //confirm that serialization is also as expected:
-            Assert.AreEqual(taskText, testTask.ToString());
+            Assert.AreEqual(taskText + Environment.NewLine, testTask.PrintTask(true));
         }
     }
 }

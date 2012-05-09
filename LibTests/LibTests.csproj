@@ -54,9 +54,10 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TaskTests.cs" />
+    <Compile Include="TempTests.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\HeapsTodoGoogleSync\HeapsTodoSyncLib.csproj">
+    <ProjectReference Include="..\HeapsTodoSyncLib\HeapsTodoSyncLib.csproj">
       <Project>{A334FEE2-B534-406B-B437-C693E3CD171E}</Project>
       <Name>HeapsTodoSyncLib</Name>
     </ProjectReference>

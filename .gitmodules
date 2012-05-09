@@ -1,0 +1,3 @@
+[submodule "HeapsTodoSyncLib/Diff"]
+	path = HeapsTodoSyncLib/Diff
+	url = git@gist.github.com:2633407.git

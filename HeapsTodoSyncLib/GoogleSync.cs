@@ -32,17 +32,44 @@ namespace HeapsTodoSyncLib
         {
             TasksService tasksService = GetTasksService(clientIdentifier, clientSecret);
             var targetList = GetList(tasksService, listName);
-            return gTasksIListToLocalTaskList(tasksService.Tasks.List(targetList.Id).Fetch().Items);
-            //TODO: look into deleted and hidden and other weird entries
+            return gTasksIListToLocalTaskList(GetTasks(tasksService, targetList.Id));
         }
 
-        private static Google.Apis.Tasks.v1.Data.TaskList GetList(TasksService tasksService, string listName)
+        private static GoogleTaskList GetList(TasksService tasksService, string listName)
         {
             var targetList = tasksService.Tasklists.List().Fetch().Items.SingleOrDefault(tl => tl.Title == listName);
             if (targetList != null)
                 return targetList;
             else
                 throw new MissingListException();
+        }
+
+        private static IList<GoogleTask> GetTasks(TasksService tasksService, string listID)
+        {
+            List<GoogleTask> outList = new List<Google.Apis.Tasks.v1.Data.Task>();
+            string nextPageToken = null;
+            while (true)
+            {
+                //defaults: 
+                // - page to 100 tasks per requests (but we encapsulate this)
+                // - include completed tasks
+                // - don't include deleted or hidden (what's the difference??)
+
+                var listRequest = tasksService.Tasks.List(listID);
+                if (nextPageToken != null)
+                    listRequest.PageToken = nextPageToken;
+
+                var response = listRequest.Fetch();
+                if (response.Items != null)
+                    outList.AddRange(response.Items);
+
+                if (response.NextPageToken != null)
+                    nextPageToken = response.NextPageToken;
+                else
+                    break;
+            }
+
+            return outList;
         }
 
         public static void CreateGoogleTasksList(string listName, string clientIdentifier, string clientSecret, TaskList taskList)
@@ -64,7 +91,8 @@ namespace HeapsTodoSyncLib
             TasksService tasksService = GetTasksService(clientIdentifier, clientSecret);
             var targetList = GetList(tasksService, listName);
             BiDictionary<GoogleTask, Task> googleTaskMapping = null;
-            var localListEquivalentToCurrentGList = gTasksIListToLocalTaskList(tasksService.Tasks.List(targetList.Id).Fetch().Items, out googleTaskMapping);
+            var targetTasks = GetTasks(tasksService, targetList.Id);
+            var localListEquivalentToCurrentGList = gTasksIListToLocalTaskList(targetTasks, out googleTaskMapping);
 
             RecursivelyUpdateGTasks(tasksService, targetList, taskList, googleTaskMapping, localListEquivalentToCurrentGList, null);
         }
@@ -107,12 +135,24 @@ namespace HeapsTodoSyncLib
             }
 
             foreach (var straggler in convertedRemoteTaskList)
-            {
-                GoogleTask gStraggler = null;
-                gTaskToConvertedMapping.TryGetBySecond(straggler, out gStraggler);
-                tasksService.Tasks.Delete(gTaskList.Id, gStraggler.Id).Fetch();
-            }
+                RecursivelyDeleteGTask(tasksService, gTaskList, gTaskToConvertedMapping, straggler);
+
             return lastGoogleTaskUpdated;
+        }
+
+        private static void RecursivelyDeleteGTask(TasksService tasksService, GoogleTaskList gTaskList, BiDictionary<GoogleTask, Task> gTaskToConvertedMapping, Task straggler)
+        {
+            //first delete children (recursively)
+            foreach (Task subStraggler in straggler.SubTasks)
+                RecursivelyDeleteGTask(tasksService, gTaskList, gTaskToConvertedMapping, subStraggler);
+
+            //then delete self.
+            GoogleTask gStraggler = null;
+            gTaskToConvertedMapping.TryGetBySecond(straggler, out gStraggler);
+            if (gStraggler != null)
+                tasksService.Tasks.Delete(gTaskList.Id, gStraggler.Id).Fetch();
+            else
+                throw new Exception("Unexpected error: Google Task to local Task mapping dictionary did not contain expected entry");
         }
 
         private static GoogleTask createGTask(TasksService tasksService, GoogleTaskList gTaskList, GoogleTask previousTask, GoogleTask parentTask, Task task)
@@ -127,7 +167,7 @@ namespace HeapsTodoSyncLib
                 insertRequest.Parent = parentTask.Id;
             if (previousTask != null)
                 insertRequest.Previous = previousTask.Id;
-            insertRequest.Fetch();
+            gTask = insertRequest.Fetch();
 
             //create any subtasks
             GoogleTask lastChildSoFar = null;
@@ -140,8 +180,11 @@ namespace HeapsTodoSyncLib
 
         private static GoogleTask updateGTask(TasksService tasksService, GoogleTaskList gTaskList, GoogleTask gTask, Task task, BiDictionary<GoogleTask, Task> googleTaskMapping, Task matchedTask)
         {
-            SetGTaskBasicPropertiesFromTask(gTask, task);
-            tasksService.Tasks.Update(gTask, gTaskList.Id, gTask.Id).Fetch();
+            if (task.PrintTask(false) != matchedTask.PrintTask(false))
+            {
+                SetGTaskBasicPropertiesFromTask(gTask, task);
+                tasksService.Tasks.Update(gTask, gTaskList.Id, gTask.Id).Fetch();
+            }
             RecursivelyUpdateGTasks(tasksService, gTaskList, task.SubTasks, googleTaskMapping, matchedTask.SubTasks, gTask);
             return gTask;
         }
@@ -260,9 +303,14 @@ namespace HeapsTodoSyncLib
 
                 if (!string.IsNullOrEmpty(remoteTask.Completed))
                 {
-                    var completionDate= DateTime.Parse(remoteTask.Completed).Date;
+                    var completionDate = DateTime.Parse(remoteTask.Completed).Date;
                     if (completionDate != UNKNOWN_COMPLETION_DATE)
                         localTask.CompletionDate = completionDate;
+                    else
+                        localTask.CompletionDate = null;
+
+                    //even if we just set the completion date to null, the task IS completed.
+                    localTask.Completed = true;
                 }
 
                 if (!string.IsNullOrEmpty(remoteTask.Parent))

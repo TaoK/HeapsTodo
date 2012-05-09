@@ -227,6 +227,8 @@ namespace HeapsTodoLib
         public Task(string rawTaskText)
             : this()
         {
+            //TODO: possibly handle subtask parsing here rather than in task list
+
             if (rawTaskText == null)
                 throw new ArgumentNullException("rawTaskText may not be null");
 
@@ -301,7 +303,7 @@ namespace HeapsTodoLib
         public void AppendTask(StringBuilder outString, bool includeSubTasks, int indentLevel)
         {
             for (int i = 0; i < indentLevel; i++)
-                outString.Append("\t");
+                outString.Append("  ");
 
             if (Completed)
             {
