@@ -22,13 +22,13 @@ namespace HeapsTodoSyncLib
     {
         public static DateTime UNKNOWN_COMPLETION_DATE = new DateTime(2000, 1, 1);
 
-        public static void Sync(TaskList currentTasks, string sharedAncestorFilename)
+        public static void Sync<T>(ITaskList1<T> currentTasks, string sharedAncestorFilename)
         {
             throw new NotImplementedException();
             //System.Windows.MessageBox.Show("Found Tasks: " + ConvertGoogleTasksToTodoTxtString());
         }
 
-        public static TaskList ConvertGoogleTasksToTodoTxtTaskList(string listName, string clientIdentifier, string clientSecret)
+        public static HeapsTodoTaskList ConvertGoogleTasksToTodoTxtTaskList(string listName, string clientIdentifier, string clientSecret)
         {
             TasksService tasksService = GetTasksService(clientIdentifier, clientSecret);
             var targetList = GetList(tasksService, listName);
@@ -46,7 +46,7 @@ namespace HeapsTodoSyncLib
 
         private static IList<GoogleTask> GetTasks(TasksService tasksService, string listID)
         {
-            List<GoogleTask> outList = new List<Google.Apis.Tasks.v1.Data.Task>();
+            List<GoogleTask> outList = new List<GoogleTask>();
             string nextPageToken = null;
             while (true)
             {
@@ -72,7 +72,7 @@ namespace HeapsTodoSyncLib
             return outList;
         }
 
-        public static void CreateGoogleTasksList(string listName, string clientIdentifier, string clientSecret, TaskList taskList)
+        public static void CreateGoogleTasksList<T>(string listName, string clientIdentifier, string clientSecret, ITaskList1<T> taskList) where T : ITask
         {
             TasksService tasksService = GetTasksService(clientIdentifier, clientSecret);
             var existingList = tasksService.Tasklists.List().Fetch().Items.SingleOrDefault(tl => tl.Title == listName);
@@ -83,46 +83,57 @@ namespace HeapsTodoSyncLib
             newList.Title = listName;
             tasksService.Tasklists.Insert(newList).Fetch();
 
-            SaveTodoTxtTaskListToGoogleTasks(listName, clientIdentifier, clientSecret, taskList);
+            SaveTodoTxtTaskListToGoogleTasks<T>(listName, clientIdentifier, clientSecret, taskList);
         }
 
-        public static void SaveTodoTxtTaskListToGoogleTasks(string listName, string clientIdentifier, string clientSecret, TaskList taskList)
+        public static void SaveTodoTxtTaskListToGoogleTasks<T>(string listName, string clientIdentifier, string clientSecret, ITaskList1<T> taskList) where T : ITask
         {
             TasksService tasksService = GetTasksService(clientIdentifier, clientSecret);
             var targetList = GetList(tasksService, listName);
-            BiDictionary<GoogleTask, Task> googleTaskMapping = null;
+            BiDictionary<GoogleTask, HeapsTodoTask> googleTaskMapping = null;
             var targetTasks = GetTasks(tasksService, targetList.Id);
             var localListEquivalentToCurrentGList = gTasksIListToLocalTaskList(targetTasks, out googleTaskMapping);
 
-            RecursivelyUpdateGTasks(tasksService, targetList, taskList, googleTaskMapping, localListEquivalentToCurrentGList, null);
+            RecursivelyUpdateGTasks<T>(tasksService, targetList, taskList, googleTaskMapping, localListEquivalentToCurrentGList, null);
         }
 
-        private static GoogleTask RecursivelyUpdateGTasks(TasksService tasksService, GoogleTaskList gTaskList, IList<Task> taskList, BiDictionary<GoogleTask, Task> gTaskToConvertedMapping, IList<Task> convertedRemoteTaskList, GoogleTask parentGTask)
+        private static GoogleTask RecursivelyUpdateGTasks<T>(TasksService tasksService, GoogleTaskList gTaskList, IList<T> taskList, BiDictionary<GoogleTask, HeapsTodoTask> gTaskToConvertedMapping, IList<HeapsTodoTask> convertedRemoteTaskList, GoogleTask parentGTask) where T: ITask
         {
+            //TODO: figure out how to do this without the horrible hack of duplicating the method.
+            // The problem is the taskList argument, which need to work for both "IList<HeapsTodoTask>" and "IList<ITask>" types.
             GoogleTask lastGoogleTaskUpdated = null;
-            foreach (var task in taskList)
+            foreach (ITask task in taskList)
             {
                 int possibleMatchID = convertedRemoteTaskList.FindIndex(t => t.MainBody == task.MainBody);
                 if (possibleMatchID >= 0)
                 {
+                    //TODO: the moving logic should use the same logic as "thisTaskIsDifferent" stuff in update:
+                    // structured task collapse for comparison.
+
                     GoogleTask matchingTask = null;
                     gTaskToConvertedMapping.TryGetBySecond(convertedRemoteTaskList[possibleMatchID], out matchingTask);
 
                     if (possibleMatchID > 0)
                     {
+                        //TODO: remove or qualify.
+                        System.Diagnostics.Debug.Print("Moving Google Task.");
+                        System.Diagnostics.Debug.Print("  Details: " + task.PrintTask());
+                        if (lastGoogleTaskUpdated != null)
+                            System.Diagnostics.Debug.Print("  Moving To After: " + lastGoogleTaskUpdated.Title);
+
                         //if we found a match, but it is not at the top of the current list, then move it to be;
                         // Same parent, but new position.
                         var moveRequest = tasksService.Tasks.Move(gTaskList.Id, matchingTask.Id);
                         moveRequest.Parent = matchingTask.Parent;
-                        if (lastGoogleTaskUpdated == null)
+                        if (lastGoogleTaskUpdated != null)
                             moveRequest.Previous = lastGoogleTaskUpdated.Id;
-                        moveRequest.Fetch();
+                        var movedgTask = moveRequest.Fetch();
                     }
 
-                    if (task.PrintTask(true) != convertedRemoteTaskList[possibleMatchID].PrintTask(true))
+                    if (task.PrintTask() != convertedRemoteTaskList[possibleMatchID].PrintTask())
                     {
-                        //if there is a difference between the task here and the just-imported google task (including subtasks), overwrite the google task.
-                        updateGTask(tasksService, gTaskList, matchingTask, task, gTaskToConvertedMapping, convertedRemoteTaskList[possibleMatchID]);
+                        //if there is a difference between the task here and the just-imported google task (including any subtasks), overwrite the google task.
+                        matchingTask = updateGTask(tasksService, gTaskList, matchingTask, task, gTaskToConvertedMapping, convertedRemoteTaskList[possibleMatchID]);
                     }
 
                     convertedRemoteTaskList.RemoveAt(possibleMatchID);
@@ -140,11 +151,15 @@ namespace HeapsTodoSyncLib
             return lastGoogleTaskUpdated;
         }
 
-        private static void RecursivelyDeleteGTask(TasksService tasksService, GoogleTaskList gTaskList, BiDictionary<GoogleTask, Task> gTaskToConvertedMapping, Task straggler)
+        private static void RecursivelyDeleteGTask(TasksService tasksService, GoogleTaskList gTaskList, BiDictionary<GoogleTask, HeapsTodoTask> gTaskToConvertedMapping, HeapsTodoTask straggler)
         {
             //first delete children (recursively)
-            foreach (Task subStraggler in straggler.SubTasks)
+            foreach (HeapsTodoTask subStraggler in straggler.SubTasks)
                 RecursivelyDeleteGTask(tasksService, gTaskList, gTaskToConvertedMapping, subStraggler);
+
+            //TODO: remove or qualify.
+            System.Diagnostics.Debug.Print("Deleting Google Task.");
+            System.Diagnostics.Debug.Print("  Details: " + straggler.PrintTask());
 
             //then delete self.
             GoogleTask gStraggler = null;
@@ -155,9 +170,13 @@ namespace HeapsTodoSyncLib
                 throw new Exception("Unexpected error: Google Task to local Task mapping dictionary did not contain expected entry");
         }
 
-        private static GoogleTask createGTask(TasksService tasksService, GoogleTaskList gTaskList, GoogleTask previousTask, GoogleTask parentTask, Task task)
+        private static GoogleTask createGTask(TasksService tasksService, GoogleTaskList gTaskList, GoogleTask previousTask, GoogleTask parentTask, ITask task)
         {
             var gTask = new GoogleTask();
+
+            //TODO: remove or qualify.
+            System.Diagnostics.Debug.Print("Creating Google Task.");
+            System.Diagnostics.Debug.Print("  Details: " + task.PrintTask());
 
             SetGTaskBasicPropertiesFromTask(gTask, task);
             
@@ -169,27 +188,77 @@ namespace HeapsTodoSyncLib
                 insertRequest.Previous = previousTask.Id;
             gTask = insertRequest.Fetch();
 
+
             //create any subtasks
-            GoogleTask lastChildSoFar = null;
-            foreach (Task sub in task.SubTasks)
-                lastChildSoFar = createGTask(tasksService, gTaskList, lastChildSoFar, gTask, sub);
+            if (task is HeapsTodoTask)
+            {
+                GoogleTask lastChildSoFar = null;
+                foreach (HeapsTodoTask sub in ((HeapsTodoTask)task).SubTasks)
+                    lastChildSoFar = createGTask(tasksService, gTaskList, lastChildSoFar, gTask, sub);
+            }
 
             //all done
             return gTask;
         }
 
-        private static GoogleTask updateGTask(TasksService tasksService, GoogleTaskList gTaskList, GoogleTask gTask, Task task, BiDictionary<GoogleTask, Task> googleTaskMapping, Task matchedTask)
+        private static GoogleTask updateGTask(TasksService tasksService, GoogleTaskList gTaskList, GoogleTask gTask, ITask task, BiDictionary<GoogleTask, HeapsTodoTask> googleTaskMapping, HeapsTodoTask matchedTask)
         {
-            if (task.PrintTask(false) != matchedTask.PrintTask(false))
+            bool thisTaskIsDifferent = false;
+            if (task is HeapsTodoTask)
             {
-                SetGTaskBasicPropertiesFromTask(gTask, task);
-                tasksService.Tasks.Update(gTask, gTaskList.Id, gTask.Id).Fetch();
+                thisTaskIsDifferent = (((HeapsTodoTask)task).PrintTask(false) != matchedTask.PrintTask(false));
             }
-            RecursivelyUpdateGTasks(tasksService, gTaskList, task.SubTasks, googleTaskMapping, matchedTask.SubTasks, gTask);
+            else
+            {
+                thisTaskIsDifferent = task.PrintTask() != TodoTxtTaskList.ConvertFromHeapsTodo(matchedTask).PrintTask();
+            }
+
+            if (thisTaskIsDifferent)
+            {
+                //TODO: remove or qualify.
+                System.Diagnostics.Debug.Print("Updating Google Task.");
+                System.Diagnostics.Debug.Print("  Before: " + matchedTask.PrintTask());
+                System.Diagnostics.Debug.Print("  After: " + task.PrintTask());
+
+                //We need to get latest version of task before updating, because 
+                // 1) other list operations (moving this task or more importantly moving OTHER tasks) might 
+                //  have changed this task's position (and etag), which would normally cause the Google Tasks API 
+                //  to complain about mismatching etags, and 
+                // 2) we actually had to disable google's etag stuff as it didn't seem to be working right 
+                //  (it was detecting differences even when the task was JUST retrieved, here!). With this
+                //  disabled, we manually have to check for any concurrent-editing changes at the last minute.
+                GoogleTask newestCopyOfGTask = tasksService.Tasks.Get(gTaskList.Id, gTask.Id).Fetch();
+                string unexpectedDifferences = GoogleTaskDifferences(gTask, newestCopyOfGTask, true);
+                if (string.IsNullOrEmpty(unexpectedDifferences))
+                {
+                    gTask = newestCopyOfGTask;
+                    SetGTaskBasicPropertiesFromTask(gTask, task);
+                    try
+                    {
+                        var updateRequest = tasksService.Tasks.Update(gTask, gTaskList.Id, gTask.Id);
+                        //simply couldn't get google's ETag stuff to work reliably, had to bypass it 
+                        // and implement cncurrency checking manually in the end.
+                        updateRequest.ETagAction = Google.Apis.ETagAction.Ignore;
+                        updateRequest.Fetch();
+                    }
+                    catch (Exception e)
+                    {
+                        //for debugging breakpoint only - this catch block has no functional effect.
+                        throw;
+                    }
+                }
+                else
+                {
+                    throw new Exception("Unexpected difference found on refreshed task - task must have been changed by another system during sync.");
+                }
+            }
+            if (task is HeapsTodoTask)
+                RecursivelyUpdateGTasks(tasksService, gTaskList, ((HeapsTodoTask)task).SubTasks, googleTaskMapping, matchedTask.SubTasks, gTask);
+
             return gTask;
         }
 
-        private static void SetGTaskBasicPropertiesFromTask(GoogleTask gTask, Task task)
+        private static void SetGTaskBasicPropertiesFromTask(GoogleTask gTask, ITask task)
         {
             gTask.Title = task.MainBody;
 
@@ -210,7 +279,8 @@ namespace HeapsTodoSyncLib
             else
                 gTask.Due = null;
 
-            gTask.Notes = task.Notes;
+            if (task is HeapsTodoTask)
+                gTask.Notes = ((HeapsTodoTask)task).Notes;
         }
 
         private static TasksService GetTasksService(string clientIdentifier, string clientSecret)
@@ -273,20 +343,20 @@ namespace HeapsTodoSyncLib
             return cachedState;
         }
 
-        private static TaskList gTasksIListToLocalTaskList(IList<GoogleTask> gTasksIList)
+        private static HeapsTodoTaskList gTasksIListToLocalTaskList(IList<GoogleTask> gTasksIList)
         {
-            BiDictionary<GoogleTask, Task> dummy = null;
+            BiDictionary<GoogleTask, HeapsTodoTask> dummy = null;
             return gTasksIListToLocalTaskList(gTasksIList, out dummy);
         }
 
-        private static TaskList gTasksIListToLocalTaskList(IList<GoogleTask> gTasksIList, out BiDictionary<GoogleTask, Task> googleTaskMapping)
+        private static HeapsTodoTaskList gTasksIListToLocalTaskList(IList<GoogleTask> gTasksIList, out BiDictionary<GoogleTask, HeapsTodoTask> googleTaskMapping)
         {
-            var outList = new TaskList();
-            googleTaskMapping = new BiDictionary<GoogleTask, Task>();
+            var outList = new HeapsTodoTaskList();
+            googleTaskMapping = new BiDictionary<GoogleTask, HeapsTodoTask>();
 
             foreach (var remoteTask in gTasksIList)
             {
-                var localTask = new Task();
+                var localTask = new HeapsTodoTask();
                 localTask.MainBody = remoteTask.Title;
                 localTask.Notes = remoteTask.Notes;
 
@@ -322,6 +392,39 @@ namespace HeapsTodoSyncLib
             }
 
             return outList;
+        }
+
+        public static string GoogleTaskDifferences(GoogleTask first, GoogleTask second, bool omitPositionCheck)
+        {
+            StringBuilder result = new StringBuilder();
+            if (first == null && second != null)
+                result.AppendLine("First is null, second isn't.");
+            else if (first != null && second == null)
+                result.AppendLine("Second is null, first isn't.");
+            else if (first != null && second != null)
+            {
+                if (first.Completed != second.Completed)
+                    result.AppendLine(string.Format("Completions differ: {0} vs {1}.", first.Completed, second.Completed));
+                if (first.Deleted != second.Deleted)
+                    result.AppendLine(string.Format("Deletions differ: {0} vs {1}.", first.Deleted, second.Deleted));
+                if (first.Due != second.Due)
+                    result.AppendLine(string.Format("Dues differ: {0} vs {1}.", first.Due, second.Due));
+                if (first.Hidden != second.Hidden)
+                    result.AppendLine(string.Format("Hiddens differ: {0} vs {1}.", first.Hidden, second.Hidden));
+                if (first.Id != second.Id)
+                    result.AppendLine(string.Format("Ids differ: {0} vs {1}.", first.Id, second.Id));
+                if (first.Notes != second.Notes)
+                    result.AppendLine(string.Format("Notes differ: {0} vs {1}.", first.Notes, second.Notes));
+                if (first.Parent != second.Parent)
+                    result.AppendLine(string.Format("Parents differ: {0} vs {1}.", first.Parent, second.Parent));
+                if (first.Position != second.Position && !omitPositionCheck)
+                    result.AppendLine(string.Format("Positions differ: {0} vs {1}.", first.Position, second.Position));
+                if (first.Status != second.Status)
+                    result.AppendLine(string.Format("Statuses differ: {0} vs {1}.", first.Status, second.Status));
+                if (first.Title != second.Title)
+                    result.AppendLine(string.Format("Titles differ: {0} vs {1}.", first.Title, second.Title));
+            }
+            return result.ToString();
         }
 
         [Serializable]

@@ -7,12 +7,12 @@ using HeapsTodoLib;
 namespace LibTests
 {
     [TestFixture]
-    public class TaskTests
+    public class HeapsTodoTaskTests
     {
         [Test]
         public void CompletedWithDate()
         {
-            var testTask = new Task("x 2012-04-04 test");
+            var testTask = new HeapsTodoTask("x 2012-04-04 test");
             Assert.IsTrue(testTask.Completed);
             Assert.IsNotNull(testTask.CompletionDate);
         }
@@ -20,7 +20,7 @@ namespace LibTests
         [Test]
         public void CompletedWithoutDate()
         {
-            var testTask = new Task("x 2012-04-04test");
+            var testTask = new HeapsTodoTask("x 2012-04-04test");
             Assert.IsTrue(testTask.Completed);
             Assert.IsNull(testTask.CompletionDate);
         }
@@ -29,7 +29,7 @@ namespace LibTests
         public void CompletedComplex()
         {
             string taskText = @"x 2012-04-05 (A) 2012-04-04 @testcontext Test +testProject.broken due:2008-09-03 ```some notes```";
-            var testTask = new Task(taskText);
+            var testTask = new HeapsTodoTask(taskText);
 
             //confirm everything is as expected after parsing
             Assert.IsTrue(testTask.Completed);

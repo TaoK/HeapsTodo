@@ -36,10 +36,16 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="TaskListFactory.cs" />
+    <Compile Include="HeapsTodoTask.cs" />
+    <Compile Include="ITask.cs" />
+    <Compile Include="ITaskListT.cs" />
     <Compile Include="MergeResultInfo.cs" />
-    <Compile Include="Task.cs" />
+    <Compile Include="BaseTask.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="TaskList.cs" />
+    <Compile Include="HeapsTodoTaskList.cs" />
+    <Compile Include="TodoTxtTask.cs" />
+    <Compile Include="TodoTxtTaskList.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

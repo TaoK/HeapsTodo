@@ -124,7 +124,7 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
             bool newLocalFile = false;
 
             //handle missing at g
-            TaskList importedlist = null;
+            ITaskList2 importedlist = null;
             try
             {
                 importedlist = HeapsTodoSyncLib.GoogleSync.ConvertGoogleTasksToTodoTxtTaskList(listName, clientID, clientSecret);
@@ -139,8 +139,8 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
                         File.Delete(googleSyncCacheFileName);
 
                     //actually create the list at google.
-                    importedlist = new TaskList();
-                    HeapsTodoSyncLib.GoogleSync.CreateGoogleTasksList(listName, clientID, clientSecret, importedlist);
+                    importedlist = new HeapsTodoTaskList();
+                    HeapsTodoSyncLib.GoogleSync.CreateGoogleTasksList(listName, clientID, clientSecret, (HeapsTodoTaskList)importedlist);
                     newGoogleList = true;
                 }
                 else
@@ -154,12 +154,25 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
                 if (Confirm("The provided todo filename was not found. Would you like to create it?", noInteractivity))
                 {
                     //the sync cache can only lead to errors in this situation - would cause anything that WAS in the 
-                    // cache to be deleted by the 3-way merge!
+                    // cache to be deleted from either genuine list by the 3-way merge!
                     if (File.Exists(googleSyncCacheFileName))
                         File.Delete(googleSyncCacheFileName);
 
-                    //TODO: make  decision as to whether this is a todo.txt or a heapstodo file.
-                    File.WriteAllText(syncTargetFile, "", Encoding.UTF8);
+                    //Ask whether we're creating a HeapsTodo or Todo.Txt file
+                    ITaskList2 newList = null;
+                    Console.Out.WriteLine("What kind of list should this be, 'HeapsTodo' or 'Todo.Txt'? ");
+                    string answer = Console.ReadLine();
+                    if (string.Compare(answer, "HeapsTodo", true) == 0)
+                        newList = new HeapsTodoTaskList();
+                    else if (string.Compare(answer, "Todo.Txt", true) == 0)
+                        newList = new TodoTxtTaskList();
+                    else
+                    {
+                        Console.Out.WriteLine("Neither 'HeapsTodo' or 'Todo.Txt' was provided; aborting merge/sync.");
+                        return 1;
+                    }
+
+                    File.WriteAllText(syncTargetFile, newList.PrintList(), Encoding.UTF8);
                     newLocalFile = true;
                 }
                 else
@@ -169,14 +182,14 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
             }
 
             //START MERGE
-            TaskList resultList = null;
+            ITaskList2 resultList = null;
             MergeResultInfo mergeResultInfo;
             if (!newGoogleList && !newLocalFile && !File.Exists(googleSyncCacheFileName))
             {
                 if (Confirm("This appears to be the first time you are synchronizing this file with this list. Any identical entries will be merged, and any entries that differ or are unique will be included in both lists, and the order of entries will be based on the local list. Would you like to continue?", noInteractivity))
                 {
-                    TaskList existingLocalList = new TaskList(File.ReadAllText(syncTargetFile));
-                    mergeResultInfo = TaskList.MergeLists(existingLocalList, importedlist, out resultList);
+                    ITaskList2 existingLocalList = TaskListFactory.ReadList(File.ReadAllText(syncTargetFile));
+                    mergeResultInfo = existingLocalList.MergeToNewList(importedlist, out resultList);
                 }
                 else
                 {
@@ -186,18 +199,26 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
             else if (!File.Exists(googleSyncCacheFileName))
             {
                 //one will be filled with the other, no need for 3-way merge
-                TaskList existingLocalList = new TaskList(File.ReadAllText(syncTargetFile));
-                mergeResultInfo = TaskList.MergeLists(existingLocalList, importedlist, out resultList);
+                ITaskList2 existingLocalList = TaskListFactory.ReadList(File.ReadAllText(syncTargetFile));
+                mergeResultInfo = existingLocalList.MergeToNewList(importedlist, out resultList);
+
+                //if local is todo.txt, make sure we store remote / common cache the same way (eg in case of interruptions).
+                if (resultList is TodoTxtTaskList)
+                    importedlist = TodoTxtTaskList.ConvertFromHeapsTodoList((HeapsTodoTaskList)importedlist);
             }
             else
             {
                 //regular 3-way merge
-
                 string[] targetFileStrings = File.ReadAllLines(syncTargetFile);
-                
                 string[] googleSyncCacheStrings = File.ReadAllLines(googleSyncCacheFileName);
+                
+                //JUST to determine whether we're dealing with a HeapsTodo list or a Todo.Txt list:
+                string importedListString = null;
+                ITaskList2 cacheList = TaskListFactory.ReadList(googleSyncCacheStrings);
+                if (cacheList is TodoTxtTaskList) //set importedlist to the right type
+                    importedlist = TodoTxtTaskList.ConvertFromHeapsTodoList((HeapsTodoTaskList)importedlist);
+                importedListString = importedlist.PrintList();
 
-                string importedListString = importedlist.PrintList();
                 //remove the trailing newline (empty string = 0 lines in array) to match behaviour of ReadAllLines()
                 //TODO: add this behaviour into TaskList object and clarify
                 string[] importedTaskStringArray = null;
@@ -338,7 +359,7 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
                 }
 
                 //get a resulting task list
-                resultList = new TaskList(string.Join(Environment.NewLine, mergeResult));
+                resultList = TaskListFactory.ReadList(string.Join(Environment.NewLine, mergeResult));
             }
 
             if (!mergeResultInfo.AnyChange)
@@ -347,27 +368,57 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
             }
             else
             {
-                if (mergeResultInfo.DeletionFromList2) Console.Out.WriteLine("Deleting remote task(s)");
-                if (mergeResultInfo.ModificationToList2) Console.Out.WriteLine("Updating remote task(s)");
-                if (mergeResultInfo.AdditionToList2) Console.Out.WriteLine("Adding remote task(s)");
-
-                if (mergeResultInfo.DeletionFromList2 || mergeResultInfo.ModificationToList2 || mergeResultInfo.AdditionToList2)
-                    //save to google
-                    HeapsTodoSyncLib.GoogleSync.SaveTodoTxtTaskListToGoogleTasks(listName, clientID, clientSecret, resultList);
-
                 if (mergeResultInfo.DeletionFromList1) Console.Out.WriteLine("Deleting local task(s)");
                 if (mergeResultInfo.ModificationToList1) Console.Out.WriteLine("Updating local task(s)");
                 if (mergeResultInfo.AdditionToList1) Console.Out.WriteLine("Adding local task(s)");
 
                 if (mergeResultInfo.DeletionFromList1 || mergeResultInfo.ModificationToList1 || mergeResultInfo.AdditionToList1)
+                {
                     //save to local
                     File.WriteAllText(syncTargetFile, resultList.PrintList());
 
+                    //If local update was successful, LOCAL STATE IS "FINAL" so save remote state as new 
+                    // "Last Known Shared State" - that way local (final) changes will be pushed correctly 
+                    // in later runs, if there are problems further in this run.
+                    File.WriteAllText(googleSyncCacheFileName, importedlist.PrintList());
+                }
+
+                if (mergeResultInfo.DeletionFromList2) Console.Out.WriteLine("Deleting remote task(s)");
+                if (mergeResultInfo.ModificationToList2) Console.Out.WriteLine("Updating remote task(s)");
+                if (mergeResultInfo.AdditionToList2) Console.Out.WriteLine("Adding remote task(s)");
+
+                if (mergeResultInfo.DeletionFromList2 || mergeResultInfo.ModificationToList2 || mergeResultInfo.AdditionToList2)
+                {
+                    try
+                    {
+                        //save to google
+                        //TODO: still have no iea how to resolve the horrible inheritance nightmare I've plunged myself into...
+                        if (resultList is HeapsTodoTaskList)
+                            HeapsTodoSyncLib.GoogleSync.SaveTodoTxtTaskListToGoogleTasks(listName, clientID, clientSecret, (HeapsTodoTaskList)resultList);
+                        else
+                            HeapsTodoSyncLib.GoogleSync.SaveTodoTxtTaskListToGoogleTasks(listName, clientID, clientSecret, (TodoTxtTaskList)resultList);
+                    }
+                    catch (Exception e)
+                    {
+                        //TODO: narrow down the exception sieve
+
+                        //if failure partway through updating Google, then save the current google state as 
+                        // "last known common" for correct resume/retry in future runs.
+                        var partiallyUpdatedList = HeapsTodoSyncLib.GoogleSync.ConvertGoogleTasksToTodoTxtTaskList(listName, clientID, clientSecret);
+                        File.WriteAllText(googleSyncCacheFileName, partiallyUpdatedList.PrintList());
+
+                        //TODO: add actual error-handling here
+
+                        //rethrow the error as temp handling...
+                        throw;
+                    }
+
+                    //save merged content to local cache, as everything was successful.
+                    File.WriteAllText(googleSyncCacheFileName, resultList.PrintList());
+                }
+
                 Console.Out.WriteLine("Sync Complete!");
             }
-
-            //save local cache as 3-way merge base for future sync (always save on success, even if no changes made)
-            File.WriteAllText(googleSyncCacheFileName, resultList.PrintList());
 
             //return all happy
             return 0;

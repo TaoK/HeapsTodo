@@ -16,7 +16,7 @@ namespace LibTests
 - another task
 ";
 
-            var list = new TaskList(taskListText);
+            var list = new HeapsTodoTaskList(taskListText);
             Assert.AreEqual(2, list.Count);
             Assert.AreEqual("One task", list[0].MainBody);
             Assert.AreEqual("another task", list[1].MainBody);
@@ -31,7 +31,7 @@ that span multiple lines
 and have content```
 - another task ```with an unclosed Note
 ";
-            var list = new TaskList(taskListText);
+            var list = new HeapsTodoTaskList(taskListText);
             Assert.AreEqual(2, list.Count);
             Assert.AreEqual("One task", list[0].MainBody);
             Assert.AreEqual("another task", list[1].MainBody);
@@ -50,7 +50,7 @@ notes
  - And another subtask at the same level
   - and another at a higher level now
 ";
-            var list = new TaskList(taskListText);
+            var list = new HeapsTodoTaskList(taskListText);
             Assert.AreEqual(1, list.Count);
             Assert.AreEqual("One task", list[0].MainBody);
             Assert.AreEqual(2, list[0].SubTasks.Count);

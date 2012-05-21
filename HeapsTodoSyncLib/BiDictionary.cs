@@ -56,7 +56,8 @@ class BiDictionary<TFirst, TSecond> : IDictionary<TFirst, TSecond>, IEnumerable<
 
     public bool Remove(TFirst key)
     {
-        return firstToSecond.Remove(key);
+        TSecond keyValue = firstToSecond[key];
+        return firstToSecond.Remove(key) && secondToFirst.Remove(keyValue);
     }
 
     public bool TryGetValue(TFirst key, out TSecond value)
@@ -101,7 +102,8 @@ class BiDictionary<TFirst, TSecond> : IDictionary<TFirst, TSecond>, IEnumerable<
 
     public bool Remove(KeyValuePair<TFirst, TSecond> item)
     {
-        return firstToSecond.Remove(item);
+        KeyValuePair<TSecond, TFirst> otherPair = new KeyValuePair<TSecond, TFirst>(item.Value, item.Key);
+        return firstToSecond.Remove(item) && secondToFirst.Remove(otherPair);
     }
 
     IEnumerator<KeyValuePair<TFirst, TSecond>> IEnumerable<KeyValuePair<TFirst, TSecond>>.GetEnumerator()
