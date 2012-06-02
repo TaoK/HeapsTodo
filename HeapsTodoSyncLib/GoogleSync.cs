@@ -99,8 +99,6 @@ namespace HeapsTodoSyncLib
 
         private static GoogleTask RecursivelyUpdateGTasks<T>(TasksService tasksService, GoogleTaskList gTaskList, IList<T> taskList, BiDictionary<GoogleTask, HeapsTodoTask> gTaskToConvertedMapping, IList<HeapsTodoTask> convertedRemoteTaskList, GoogleTask parentGTask) where T: ITask
         {
-            //TODO: figure out how to do this without the horrible hack of duplicating the method.
-            // The problem is the taskList argument, which need to work for both "IList<HeapsTodoTask>" and "IList<ITask>" types.
             GoogleTask lastGoogleTaskUpdated = null;
             foreach (ITask task in taskList)
             {

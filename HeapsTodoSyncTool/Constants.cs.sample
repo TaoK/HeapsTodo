@@ -1,0 +1,13 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace HeapsTodoSyncTool
+{
+    internal static class Constants
+    {
+        internal const string GoogleTasksApiClientID = "GET THIS FROM A GOOGLE API ACCOUNT";
+        internal const string GoogleTasksApiClientSecret = "GET THIS FROM A GOOGLE API ACCOUNT";
+    }
+}

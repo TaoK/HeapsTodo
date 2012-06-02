@@ -108,9 +108,6 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
                 listName = Path.GetFileName(syncTargetFile);
             string googleSyncCacheFileName = syncTargetFile + "." + CleanListForPath(listName) + ".htdgsync";
 
-            string clientID = "1053655555490.apps.googleusercontent.com";
-            string clientSecret = "UUJ3kv-i5l2PdBpC23tBUHsz";
-
             //TODO: TEMPORARY SIMPLIFICATION!!
             // really, most of this is part of the sync logic and should be implemented with callbacks for UI interaction
             // also progress indicator and cancellation option?
@@ -127,7 +124,7 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
             ITaskList2 importedlist = null;
             try
             {
-                importedlist = HeapsTodoSyncLib.GoogleSync.ConvertGoogleTasksToTodoTxtTaskList(listName, clientID, clientSecret);
+                importedlist = HeapsTodoSyncLib.GoogleSync.ConvertGoogleTasksToTodoTxtTaskList(listName, Constants.GoogleTasksApiClientID, Constants.GoogleTasksApiClientSecret);
             }
             catch (HeapsTodoSyncLib.GoogleSync.MissingListException)
             {
@@ -140,7 +137,7 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
 
                     //actually create the list at google.
                     importedlist = new HeapsTodoTaskList();
-                    HeapsTodoSyncLib.GoogleSync.CreateGoogleTasksList(listName, clientID, clientSecret, (HeapsTodoTaskList)importedlist);
+                    HeapsTodoSyncLib.GoogleSync.CreateGoogleTasksList(listName, Constants.GoogleTasksApiClientID, Constants.GoogleTasksApiClientSecret, (HeapsTodoTaskList)importedlist);
                     newGoogleList = true;
                 }
                 else
@@ -394,9 +391,9 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
                         //save to google
                         //TODO: still have no iea how to resolve the horrible inheritance nightmare I've plunged myself into...
                         if (resultList is HeapsTodoTaskList)
-                            HeapsTodoSyncLib.GoogleSync.SaveTodoTxtTaskListToGoogleTasks(listName, clientID, clientSecret, (HeapsTodoTaskList)resultList);
+                            HeapsTodoSyncLib.GoogleSync.SaveTodoTxtTaskListToGoogleTasks(listName, Constants.GoogleTasksApiClientID, Constants.GoogleTasksApiClientSecret, (HeapsTodoTaskList)resultList);
                         else
-                            HeapsTodoSyncLib.GoogleSync.SaveTodoTxtTaskListToGoogleTasks(listName, clientID, clientSecret, (TodoTxtTaskList)resultList);
+                            HeapsTodoSyncLib.GoogleSync.SaveTodoTxtTaskListToGoogleTasks(listName, Constants.GoogleTasksApiClientID, Constants.GoogleTasksApiClientSecret, (TodoTxtTaskList)resultList);
                     }
                     catch (Exception e)
                     {
@@ -404,7 +401,7 @@ Example: HeapsTodoSyncTool myFile.txt /t:G /n:""Mobile List""
 
                         //if failure partway through updating Google, then save the current google state as 
                         // "last known common" for correct resume/retry in future runs.
-                        var partiallyUpdatedList = HeapsTodoSyncLib.GoogleSync.ConvertGoogleTasksToTodoTxtTaskList(listName, clientID, clientSecret);
+                        var partiallyUpdatedList = HeapsTodoSyncLib.GoogleSync.ConvertGoogleTasksToTodoTxtTaskList(listName, Constants.GoogleTasksApiClientID, Constants.GoogleTasksApiClientSecret);
                         File.WriteAllText(googleSyncCacheFileName, partiallyUpdatedList.PrintList());
 
                         //TODO: add actual error-handling here

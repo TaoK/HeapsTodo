@@ -4,6 +4,9 @@
 #  customized to also omit Deployment folder with binaries
 #  also VB6 additional files added
 
+#Constants files that contain client secrets
+/HeapsTodoSyncTool/Constants.cs
+
 #Notepad++ file autosave plugin
 *~
 
