@@ -21,4 +21,11 @@ General restrictions / notes:
 
 Instructions:
 
-1.  
+1.  Clone from github
+2.  get SubModule(s) with "git submodule update --init" MORE WORK TO BE DONE HERE - PUBLIC REPO INSTEAD OF PRIVATE
+3.  Rename "HeapsTodoSyncTool/Constants.cs.sample" to "HeapsTodoSyncTool/Constants.cs",
+    and replace the strings in the file with more reasonable values obtained from 
+    Google's 
+4.  Open in Visual Studio + build the solution; there should be nothing else to it.
+
+COMING SOON: MonoDevelop support on Linux

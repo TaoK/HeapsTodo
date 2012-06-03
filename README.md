@@ -92,6 +92,8 @@ Things still missing include:
 * Code organization - much code that should be shared is now in the commandline tool source
 * Comprehensive logging - by default the tool should keep a comprehensive log of all changes made, for debugging.
 * Creation Date handling - for some reason task creation date never made it...
+* Testing in Mono on Linux & OSX
+* Fixing submodule refereces
 
 The UI program / client is not yet started - it will be the next phase of the project once the Sync Tool
 is published and more-or-less complete.
