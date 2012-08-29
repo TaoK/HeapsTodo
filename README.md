@@ -92,8 +92,22 @@ Things still missing include:
 * Code organization - much code that should be shared is now in the commandline tool source
 * Comprehensive logging - by default the tool should keep a comprehensive log of all changes made, for debugging.
 * Creation Date handling - for some reason task creation date never made it...
-* Testing in Mono on Linux & OSX
-* Fixing submodule refereces
+* Fixing submodule references to use a public/unathenticated URL
+* Adding handling for cert mismatches, for new mono installs
+* Determining how to use DPAPI in mono/linux, 
+** looks like "mozroots" creates folders with incorrect security
+** we don't yet know whether using DPAPI first will correct this
+** even if it does work, they might have incorrect setup from previous mozroots setup, so need messaging
+* Determining how to ILMerge DotNetOpenAuth in a linux mono/MonoDevelop build environment - DotNetOpenAuthMini maybe?
+* adding safe / appropriate handling for SSL
+** Probably complex to handle
+*** move up DPAPI to BEFORE SSL calls
+*** add messaging for DPAPI issues
+*** properly try/catch SSL block
+*** offer mozroots solution
+*** also offer to just ignore, configurably
+* adding friendly handling for URL-spawn failure (xdg-utils on linux, otherwise???)
+* generalizing linux instructions beyond ubuntu/debian/mint
 
 The UI program / client is not yet started - it will be the next phase of the project once the Sync Tool
 is published and more-or-less complete.

@@ -7,6 +7,9 @@
 #Constants files that contain client secrets
 /HeapsTodoSyncTool/Constants.cs
 
+#Microsoft Assembly that is required for ILRepack but not open-source/redistributable
+/HeapsTodoSyncLib/References/System.Web.Mvc.dll
+
 #Notepad++ file autosave plugin
 *~
 
